@@ -26,12 +26,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build OCI with Spring Boot (Paketo)
-        run: mvn -B -DskipTests spring-boot:build-image
-      - name: Tag & Push
+      # Paketo's <publish>true</publish> (set in iotmining-parent) pushes the
+      # image directly as part of this goal - no separate docker tag/push
+      # needed. Overriding the image name here (rather than relying on the
+      # pom's ${project.artifactId}:${project.version} default) lets the
+      # caller control the exact tag; the previous version of this step
+      # tagged/pushed a ref (${GITHUB_REF_NAME}) that Paketo never actually
+      # built, which would have failed with "No such image".
+      - name: Build & Publish OCI image with Spring Boot (Paketo)
         run: |
-          REF="${GITHUB_REF_NAME}"
-          SHA="${GITHUB_SHA}"
-          docker tag ghcr.io/iotmining/${{ inputs.image_name }}:${REF} ghcr.io/iotmining/${{ inputs.image_name }}:${SHA}
-          docker push ghcr.io/iotmining/${{ inputs.image_name }}:${REF}
-          docker push ghcr.io/iotmining/${{ inputs.image_name }}:${SHA}
+          mvn -B -DskipTests \
+              -Dspring-boot.build-image.imageName=ghcr.io/iiotedge/${{ inputs.image_name }}:${{ github.sha }} \
+              spring-boot:build-image

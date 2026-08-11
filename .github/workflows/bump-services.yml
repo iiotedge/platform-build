@@ -12,10 +12,25 @@ on:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      # NOTE: this service list has not been verified against real repo
+      # names (e.g. "tms" doesn't match any confirmed repo - the actual
+      # tenant-management-service platform-parent migration hasn't happened
+      # yet, and several of these names don't match anything found in this
+      # org during a platform survey). Update this list once each service's
+      # real repo name is confirmed, before relying on this workflow.
       - name: Emit repository_dispatch to service repos
         uses: actions/github-script@v7
+        env:
+          # The default GITHUB_TOKEN can only act on THIS repo - dispatching
+          # to other repos in the org needs a PAT (or GitHub App token) with
+          # write access to each target repo.
+          NEW_PARENT_VERSION: ${{ inputs.new_parent_version }}
+          NEW_BOM_VERSION: ${{ inputs.new_bom_version }}
         with:
+          github-token: ${{ secrets.PLATFORM_DISPATCH_TOKEN }}
           script: |
             const services = [
               'auth','api-gateway','tms','pricing-catalog',
@@ -27,8 +42,8 @@ jobs:
                 repo,
                 event_type: 'bump-platform',
                 client_payload: {
-                  parent: core.getInput('new_parent_version'),
-                  bom: core.getInput('new_bom_version')
+                  parent: process.env.NEW_PARENT_VERSION,
+                  bom: process.env.NEW_BOM_VERSION
                 }
               });
             }

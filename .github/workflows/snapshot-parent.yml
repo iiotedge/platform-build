@@ -78,6 +78,33 @@ jobs:
           XML
           echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
 
+      - name: Install XML tools (for version alignment)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libxml2-utils xmlstarlet
+
+      # The checked-in <version> isn't -SNAPSHOT suffixed, so without this,
+      # every push to main would redeploy under that same fixed version -
+      # most registries (including GitHub Packages) treat a non-SNAPSHOT
+      # version as immutable once published, so repeat pushes would fail or
+      # silently overwrite. Force a real SNAPSHOT version instead, same way
+      # release-parent.yml forces a real release version from the tag.
+      - name: Force a -SNAPSHOT version
+        run: |
+          BOM_POM="iotmining-bom/pom.xml"
+          PARENT_POM="iotmining-parent/pom.xml"
+
+          BOM_VER=$(xmllint --xpath "string(/project/version)" "$BOM_POM")
+          SNAPSHOT_VER="${BOM_VER%-SNAPSHOT}-SNAPSHOT"
+
+          mvn -q -N -f "$BOM_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
+          mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
+          xmlstarlet ed -P -L \
+            -u "//dependency[artifactId='iotmining-bom']/version" -v "$SNAPSHOT_VER" \
+            "$PARENT_POM"
+
+          echo "Snapshot version: $SNAPSHOT_VER"
+
       # ---- Critical: install the BOM locally BEFORE Parent (since it imports it) ----
       - name: Install BOM locally
         run: mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always -f iotmining-bom/pom.xml clean install
