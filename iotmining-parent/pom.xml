@@ -10,7 +10,7 @@
     <packaging>pom</packaging>
     <name>IoTMining Parent</name>
     <description>Central pluginManagement, quality &amp; security profiles for IoTMining</description>
-    <url>https://github.com/iotmining/platform-build</url>
+    <url>https://github.com/iiotedge/platform-build</url>
 
     <licenses>
         <license>
@@ -21,9 +21,9 @@
     </licenses>
 
     <scm>
-        <url>https://github.com/iotmining/platform-build</url>
-        <connection>scm:git:https://github.com/iotmining/platform-build.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/iotmining/platform-build.git</developerConnection>
+        <url>https://github.com/iiotedge/platform-build</url>
+        <connection>scm:git:https://github.com/iiotedge/platform-build.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/iiotedge/platform-build.git</developerConnection>
         <tag>HEAD</tag>
     </scm>
 
@@ -32,12 +32,12 @@
         <repository>
             <id>github</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+            <url>https://maven.pkg.github.com/iiotedge/platform-build</url>
         </repository>
         <snapshotRepository>
             <id>github</id>
             <name>GitHub Packages (Snapshots)</name>
-            <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+            <url>https://maven.pkg.github.com/iiotedge/platform-build</url>
         </snapshotRepository>
     </distributionManagement>
 
@@ -51,11 +51,14 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Import our BOM -->
+            <!-- Import our BOM - keep in lockstep with this module's own <version> above;
+                 the release workflow's version-alignment step updates both together on
+                 every tagged release, but this was found out of sync (2025.08.14 vs the
+                 parent's own 2025.08.18) since no release has actually gone out yet. -->
             <dependency>
                 <groupId>com.iotmining.build</groupId>
                 <artifactId>iotmining-bom</artifactId>
-                <version>2025.08.14</version>
+                <version>2025.08.18</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -80,6 +83,8 @@
         <owasp.dependencycheck.version>9.2.0</owasp.dependencycheck.version>
         <cyclonedx.plugin.version>2.8.0</cyclonedx.plugin.version>
         <flatten.plugin.version>1.6.0</flatten.plugin.version>
+        <spotbugs-plugin.version>4.8.6.6</spotbugs-plugin.version>
+        <findsecbugs.version>1.13.0</findsecbugs.version>
     </properties>
 
     <build>
@@ -171,7 +176,10 @@
                     </executions>
                 </plugin>
 
-                <!-- Coverage -->
+                <!-- Coverage - thresholds match what auth-service/tenant-management-service
+                     already enforce; services can override the <rules> via plugin
+                     configuration if a threshold genuinely doesn't fit, but this is the
+                     platform default, not each service re-declaring its own. -->
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
@@ -187,6 +195,63 @@
                             <phase>verify</phase>
                             <goals>
                                 <goal>report</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>coverage-check</id>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration>
+                                <rules>
+                                    <rule>
+                                        <element>BUNDLE</element>
+                                        <limits>
+                                            <limit>
+                                                <counter>INSTRUCTION</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>0.85</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>BRANCH</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>0.65</minimum>
+                                            </limit>
+                                        </limits>
+                                    </rule>
+                                </rules>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Static analysis / security - each consuming service still supplies
+                     its own spotbugs-exclude.xml at ${project.basedir} (findings are
+                     necessarily service-specific); this centralizes only the plugin
+                     version and Medium/Max/FindSecBugs baseline. -->
+                <plugin>
+                    <groupId>com.github.spotbugs</groupId>
+                    <artifactId>spotbugs-maven-plugin</artifactId>
+                    <version>${spotbugs-plugin.version}</version>
+                    <configuration>
+                        <effort>Max</effort>
+                        <threshold>Medium</threshold>
+                        <xmlOutput>true</xmlOutput>
+                        <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+                        <plugins>
+                            <plugin>
+                                <groupId>com.h3xstream.findsecbugs</groupId>
+                                <artifactId>findsecbugs-plugin</artifactId>
+                                <version>${findsecbugs.version}</version>
+                            </plugin>
+                        </plugins>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>spotbugs-check</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
                             </goals>
                         </execution>
                     </executions>

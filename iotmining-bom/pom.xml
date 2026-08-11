@@ -10,7 +10,7 @@
     <packaging>pom</packaging>
     <name>IoTMining BOM</name>
     <description>Central dependency version alignment for all IoTMining services</description>
-    <url>https://github.com/iotmining/platform-build</url>
+    <url>https://github.com/iiotedge/platform-build</url>
 
     <licenses>
         <license>
@@ -21,9 +21,9 @@
     </licenses>
 
     <scm>
-        <url>https://github.com/iotmining/platform-build</url>
-        <connection>scm:git:https://github.com/iotmining/platform-build.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/iotmining/platform-build.git</developerConnection>
+        <url>https://github.com/iiotedge/platform-build</url>
+        <connection>scm:git:https://github.com/iiotedge/platform-build.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/iiotedge/platform-build.git</developerConnection>
         <tag>HEAD</tag>
     </scm>
 
@@ -32,12 +32,12 @@
         <repository>
             <id>github</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+            <url>https://maven.pkg.github.com/iiotedge/platform-build</url>
         </repository>
         <snapshotRepository>
             <id>github</id>
             <name>GitHub Packages (Snapshots)</name>
-            <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+            <url>https://maven.pkg.github.com/iiotedge/platform-build</url>
         </snapshotRepository>
     </distributionManagement>
 
@@ -71,6 +71,7 @@
         <jjwt.version>0.12.5</jjwt.version>
         <bouncycastle.version>1.78.1</bouncycastle.version>
         <passay.version>1.7.4</passay.version>
+        <shedlock.version>5.16.0</shedlock.version>
 
         <!-- Utils / logging -->
         <mapstruct.version>1.6.2</mapstruct.version>
@@ -220,6 +221,18 @@
                 <groupId>org.passay</groupId>
                 <artifactId>passay</artifactId>
                 <version>${passay.version}</version>
+            </dependency>
+            <!-- Distributed lock for @Scheduled jobs across multiple service
+                 replicas - already adopted in auth-service, not yet pinned here. -->
+            <dependency>
+                <groupId>net.javacrumbs.shedlock</groupId>
+                <artifactId>shedlock-spring</artifactId>
+                <version>${shedlock.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.javacrumbs.shedlock</groupId>
+                <artifactId>shedlock-provider-jdbc-template</artifactId>
+                <version>${shedlock.version}</version>
             </dependency>
 
             <!-- Errors / logging -->
