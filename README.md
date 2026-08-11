@@ -16,25 +16,25 @@ required.
 **Parent and BOM are deliberately two separate artifacts, not one.** A `pom.xml` can
 only have a single `<parent>`, but can `import` any number of BOMs via
 `<dependencyManagement>`. Splitting them means a service that *can't* use
-`iotmining-parent` as its actual parent (e.g. one already parented directly off
+`iiotedge-parent` as its actual parent (e.g. one already parented directly off
 `spring-boot-starter-parent`, or a very different stack) can still `import` the BOM
 alone for consistent dependency versions across the platform.
 
-- **`iotmining-parent`** - build governance: plugin versions and their default
+- **`iiotedge-parent`** - build governance: plugin versions and their default
   config (compiler, surefire/failsafe, JaCoCo coverage gate, SpotBugs + FindSecBugs,
   OWASP dependency-check, CycloneDX SBOM, Spotless/Google-Java-Format, Paketo
   container images), plus `ci`/`it`/`sbom`/`security` profiles. Itself parented off
   `spring-boot-starter-parent`, so a service using it gets Boot's own sensible
   defaults too, in one hop.
-- **`iotmining-bom`** - dependency *version* alignment only. Imports the Spring
+- **`iiotedge-bom`** - dependency *version* alignment only. Imports the Spring
   Boot/Cloud/Jackson/Micrometer/Testcontainers BOMs and pins ~25 individual libraries
   (Postgres, Kafka, Flyway, JJWT, ShedLock, BouncyCastle, the test stack, etc) so
   every service that imports it gets the same, deliberately-chosen version of each,
   without needing to declare `<version>` itself.
 
 ## Modules
-- `iotmining-bom/` → `com.iotmining.build:iotmining-bom:2025.08.18`
-- `iotmining-parent/` → `com.iotmining.build:iotmining-parent:2025.08.18`
+- `iiotedge-bom/` → `com.iiotedge.build:iiotedge-bom:2025.08.18`
+- `iiotedge-parent/` → `com.iiotedge.build:iiotedge-parent:2025.08.18`
 
 ## How to Release
 
@@ -57,16 +57,16 @@ timestamped snapshot. Worth fixing before relying on this path day-to-day.
 
 ```xml
 <parent>
-  <groupId>com.iotmining.build</groupId>
-  <artifactId>iotmining-parent</artifactId>
+  <groupId>com.iiotedge.build</groupId>
+  <artifactId>iiotedge-parent</artifactId>
   <version>2025.08.18</version>
 </parent>
 
 <dependencyManagement>
   <dependencies>
     <dependency>
-      <groupId>com.iotmining.build</groupId>
-      <artifactId>iotmining-bom</artifactId>
+      <groupId>com.iiotedge.build</groupId>
+      <artifactId>iiotedge-bom</artifactId>
       <version>2025.08.18</version>
       <type>pom</type>
       <scope>import</scope>
@@ -75,7 +75,7 @@ timestamped snapshot. Worth fixing before relying on this path day-to-day.
 </dependencyManagement>
 ```
 
-A service using `iotmining-parent` as its actual `<parent>` (no `<relativePath/>`
+A service using `iiotedge-parent` as its actual `<parent>` (no `<relativePath/>`
 needed - the parent's own `<repositories>` block already points at this repo) doesn't
 need a separate `<repositories>` entry of its own to resolve it. If a service instead
 only imports the BOM without using this parent, it still needs that repository

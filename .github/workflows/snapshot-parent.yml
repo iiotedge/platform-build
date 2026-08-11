@@ -91,9 +91,9 @@ jobs:
       # release-parent.yml forces a real release version from the tag.
       #
       # Ordering here is load-bearing, confirmed the hard way: `mvn
-      # versions:set -f iotmining-parent/pom.xml` has to build the parent's
+      # versions:set -f iiotedge-parent/pom.xml` has to build the parent's
       # full effective model just to change its own <version> tag, which
-      # means resolving its <dependencyManagement> import of iotmining-bom -
+      # means resolving its <dependencyManagement> import of iiotedge-bom -
       # using whatever version that import currently says. If the import
       # still points at the OLD version (because BOM hasn't been re-pointed
       # yet) and that old version was never published/installed, this fails
@@ -102,8 +102,8 @@ jobs:
       # parent's own version - never the other way around.
       - name: Force a -SNAPSHOT version
         run: |
-          BOM_POM="iotmining-bom/pom.xml"
-          PARENT_POM="iotmining-parent/pom.xml"
+          BOM_POM="iiotedge-bom/pom.xml"
+          PARENT_POM="iiotedge-parent/pom.xml"
 
           # Maven POMs declare a default XML namespace (xmlns="http://maven.apache.org/POM/4.0.0"),
           # so a plain /project/version xpath silently matches nothing and
@@ -117,7 +117,7 @@ jobs:
 
           # xmlstarlet needs the namespace registered too (-N), for the same reason as xmllint above.
           xmlstarlet ed -P -L -N x="http://maven.apache.org/POM/4.0.0" \
-            -u "//x:dependency[x:artifactId='iotmining-bom']/x:version" -v "$SNAPSHOT_VER" \
+            -u "//x:dependency[x:artifactId='iiotedge-bom']/x:version" -v "$SNAPSHOT_VER" \
             "$PARENT_POM"
           mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
 
@@ -127,14 +127,14 @@ jobs:
         run: |
           mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always \
               -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-              -f iotmining-bom/pom.xml \
+              -f iiotedge-bom/pom.xml \
               org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
 
       - name: Deploy Parent (SNAPSHOT)
         run: |
           mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always \
               -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-              -f iotmining-parent/pom.xml \
+              -f iiotedge-parent/pom.xml \
               org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
 
       # Optional PAT fallback (if org blocks GITHUB_TOKEN for packages)
@@ -176,10 +176,10 @@ jobs:
 
           mvn -B -s "$SETTINGS" -DskipTests -Dstyle.color=always \
               -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-              -f iotmining-bom/pom.xml \
+              -f iiotedge-bom/pom.xml \
               org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
 
           mvn -B -s "$SETTINGS" -DskipTests -Dstyle.color=always \
               -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-              -f iotmining-parent/pom.xml \
+              -f iiotedge-parent/pom.xml \
               org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy

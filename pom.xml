@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.iotmining.build</groupId>
-    <artifactId>iotmining-build</artifactId>
+    <groupId>com.iiotedge.build</groupId>
+    <artifactId>iiotedge-build</artifactId>
     <version>2025.08.18</version>
     <packaging>pom</packaging>
     <name>IoTMining Build Aggregator</name>
@@ -13,8 +13,8 @@
     <url>https://github.com/iiotedge/platform-build</url>
 
     <modules>
-        <module>iotmining-bom</module>
-        <module>iotmining-parent</module>
+        <module>iiotedge-bom</module>
+        <module>iiotedge-parent</module>
     </modules>
 
     <licenses>

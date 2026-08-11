@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
     inputs:
       new_parent_version:
-        description: 'iotmining-parent version (e.g., 2025.08.1)'
+        description: 'iiotedge-parent version (e.g., 2025.08.1)'
         required: true
       new_bom_version:
-        description: 'iotmining-bom version (e.g., 2025.08.1)'
+        description: 'iiotedge-bom version (e.g., 2025.08.1)'
         required: true
 
 jobs:

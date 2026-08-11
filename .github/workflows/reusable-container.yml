@@ -26,7 +26,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Paketo's <publish>true</publish> (set in iotmining-parent) pushes the
+      # Paketo's <publish>true</publish> (set in iiotedge-parent) pushes the
       # image directly as part of this goal - no separate docker tag/push
       # needed. Overriding the image name here (rather than relying on the
       # pom's ${project.artifactId}:${project.version} default) lets the

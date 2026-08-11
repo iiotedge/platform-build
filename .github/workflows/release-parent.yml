@@ -17,7 +17,7 @@ jobs:
       packages: write
 
     env:
-      GH_REPO: ${{ github.repository }}             # e.g., iotmining/platform-build
+      GH_REPO: ${{ github.repository }}             # e.g., iiotedge/platform-build
       HAS_PAT: ${{ secrets.GH_PACKAGES_TOKEN != '' }}
 
     steps:
@@ -88,9 +88,9 @@ jobs:
       # Align BOM's own version with the tag (only on tag builds). Split from
       # aligning the parent (below) because of a load-bearing ordering
       # constraint, confirmed the hard way: `mvn versions:set -f
-      # iotmining-parent/pom.xml` has to build the parent's full effective
+      # iiotedge-parent/pom.xml` has to build the parent's full effective
       # model just to change its own <version> tag, which means resolving
-      # its <dependencyManagement> import of iotmining-bom - using whatever
+      # its <dependencyManagement> import of iiotedge-bom - using whatever
       # version that import currently says. That import can only resolve
       # once the BOM has actually been installed under the version it's
       # about to be repointed to, which is why "Install BOM locally" sits
@@ -103,7 +103,7 @@ jobs:
           TAG="${TAG#v}"   # strip a leading 'v' so v2025.08.18 and 2025.08.18 publish under the same version
           echo "Tag is: ${TAG}"
 
-          BOM_POM="iotmining-bom/pom.xml"
+          BOM_POM="iiotedge-bom/pom.xml"
 
           # Maven POMs declare a default XML namespace (xmlns="http://maven.apache.org/POM/4.0.0"),
           # so a plain /project/version xpath silently matches nothing and
@@ -117,7 +117,7 @@ jobs:
 
       # ---- Critical: install the BOM locally BEFORE anything that imports it ----
       - name: Install BOM locally
-        run: mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always -f iotmining-bom/pom.xml clean install
+        run: mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always -f iiotedge-bom/pom.xml clean install
 
       # Now that the (possibly just-retagged) BOM is installed locally under
       # its final version, it's safe to repoint the parent's import and set
@@ -129,16 +129,16 @@ jobs:
           TAG="${TAG#v}"
           echo "Tag is: ${TAG}"
 
-          BOM_POM="iotmining-bom/pom.xml"
-          PARENT_POM="iotmining-parent/pom.xml"
+          BOM_POM="iiotedge-bom/pom.xml"
+          PARENT_POM="iiotedge-parent/pom.xml"
 
           PARENT_VER=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$PARENT_POM")
-          IMPORT_VER=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iotmining-bom']/*[local-name()='version'])" "$PARENT_POM")
+          IMPORT_VER=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iiotedge-bom']/*[local-name()='version'])" "$PARENT_POM")
 
           if [[ "$IMPORT_VER" != "$TAG" ]]; then
             # xmlstarlet needs the namespace registered too (-N), for the same reason as xmllint above.
             xmlstarlet ed -P -L -N x="http://maven.apache.org/POM/4.0.0" \
-              -u "//x:dependency[x:artifactId='iotmining-bom']/x:version" -v "$TAG" \
+              -u "//x:dependency[x:artifactId='iiotedge-bom']/x:version" -v "$TAG" \
               "$PARENT_POM"
           fi
           if [[ "$PARENT_VER" != "$TAG" ]]; then
@@ -152,7 +152,7 @@ jobs:
           echo "Post-update check:"
           echo "BOM=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$BOM_POM")"
           echo "PARENT=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$PARENT_POM")"
-          echo "IMPORT=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iotmining-bom']/*[local-name()='version'])" "$PARENT_POM")"
+          echo "IMPORT=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iiotedge-bom']/*[local-name()='version'])" "$PARENT_POM")"
 
       # Tag: deploy to GH Packages; Branch: just verify
       - name: Build/Publish BOM
@@ -161,11 +161,11 @@ jobs:
             mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always \
                 -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
                 -DdeployAtEnd=false -Dmaven.deploy.skip=false \
-                -f iotmining-bom/pom.xml \
+                -f iiotedge-bom/pom.xml \
                 org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
           else
             mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always \
-                -f iotmining-bom/pom.xml verify
+                -f iiotedge-bom/pom.xml verify
           fi
 
       - name: Build/Publish Parent
@@ -174,11 +174,11 @@ jobs:
             mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always \
                 -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
                 -DdeployAtEnd=false -Dmaven.deploy.skip=false \
-                -f iotmining-parent/pom.xml \
+                -f iiotedge-parent/pom.xml \
                 clean org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
           else
             mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always \
-                -f iotmining-parent/pom.xml clean verify
+                -f iiotedge-parent/pom.xml clean verify
           fi
 
       # Optional fallback if org policy blocks GITHUB_TOKEN for packages
@@ -231,12 +231,12 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             mvn -B -s "$SETTINGS" -DskipTests -Dstyle.color=always \
                 -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-                -f iotmining-bom/pom.xml \
+                -f iiotedge-bom/pom.xml \
                 org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
 
             mvn -B -s "$SETTINGS" -DskipTests -Dstyle.color=always \
                 -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-                -f iotmining-parent/pom.xml \
+                -f iiotedge-parent/pom.xml \
                 org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
           else
             echo "Branch build failed earlier; PAT fallback only applies to tag publishes. Skipping."

@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.iotmining.build</groupId>
-    <artifactId>iotmining-bom</artifactId>
+    <groupId>com.iiotedge.build</groupId>
+    <artifactId>iiotedge-bom</artifactId>
     <version>2025.08.18</version>
     <packaging>pom</packaging>
     <name>IoTMining BOM</name>

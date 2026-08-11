@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.iotmining.build</groupId>
-    <artifactId>iotmining-parent</artifactId>
+    <groupId>com.iiotedge.build</groupId>
+    <artifactId>iiotedge-parent</artifactId>
     <version>2025.08.18</version>
     <packaging>pom</packaging>
     <name>IoTMining Parent</name>
@@ -56,8 +56,8 @@
                  every tagged release, but this was found out of sync (2025.08.14 vs the
                  parent's own 2025.08.18) since no release has actually gone out yet. -->
             <dependency>
-                <groupId>com.iotmining.build</groupId>
-                <artifactId>iotmining-bom</artifactId>
+                <groupId>com.iiotedge.build</groupId>
+                <artifactId>iiotedge-bom</artifactId>
                 <version>2025.08.18</version>
                 <type>pom</type>
                 <scope>import</scope>
