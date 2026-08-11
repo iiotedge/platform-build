@@ -21,9 +21,28 @@ Known gaps, prioritized. See `CHECKLIST.md` for the full done/open list.
   auth-service/tenant-management-service's already-adopted thresholds.
 - ~~ShedLock not pinned in the BOM~~ - added.
 - ~~No LICENSE file despite all 3 POMs declaring Apache 2.0~~ - added.
+- ~~jjwt-impl/jjwt-jackson not pinned in the BOM~~ - only jjwt-api was
+  pinned (at a stale 0.12.5, while auth-service already used 0.12.6),
+  so impl/jackson's own transitive jjwt-api requirement got silently
+  overridden - a real dependencyConvergence failure on auth-service's
+  first adoption attempt. All three now pinned together at 0.12.6.
+- ~~README claimed a consuming service doesn't need its own `<repositories>`
+  entry~~ - wrong, disproven with a genuinely empty local `.m2`: the
+  not-yet-resolved parent can't bootstrap its own resolution. Corrected,
+  and auth-service's own pom now carries the entry it actually needs.
 
 **First real publish confirmed working**: `com.iiotedge.build:iiotedge-parent`
 and `:iiotedge-bom` are live on GitHub Packages under the `iiotedge` org.
+
+**First real adoption piloted (auth-service)**: parent + BOM swapped in,
+`mvn clean verify` passes standalone (185/185 tests, SpotBugs clean, JaCoCo
+gate met). Not yet proven against real GitHub Packages credentials in this
+environment - verified via local `.m2` (installed from this repo's own
+source) plus a deliberate empty-cache resolution attempt that failed with
+exactly `401 Unauthorized` against the correct URL, not a 404 or wrong
+coordinate - confirming the wiring is right and only real credentials are
+missing here. Still needs a real credentialed run (a dev machine or CI with
+`GH_TOKEN` configured) before calling this fully proven.
 
 ## Publishing pipeline
 
@@ -54,17 +73,21 @@ and `:iiotedge-bom` are live on GitHub Packages under the `iiotedge` org.
 
 ## Adoption
 
-- [ ] **No service actually consumes `iiotedge-parent`/`iiotedge-bom` yet.**
-      This is the actual point of the repo - auth-service and
-      tenant-management-service both still resolve their parent via a local
-      relative path. Migrating even one real service end-to-end (through
-      actual network resolution against GitHub Packages, not just the local
-      `.m2` simulation used to verify this repo) is the real remaining
-      proof this works.
-- [ ] The two adoption costs documented in `README.md` (Spotless/Google-Java-
-      Format enforcement, strict `dependencyConvergence`) are theoretical
-      until a real service with an organically-grown dependency tree and
-      existing code style actually adopts this parent and hits them.
+- [ ] **auth-service adopted `iiotedge-parent`/`iiotedge-bom`, not yet proven
+      against real GitHub Packages credentials.** Locally verified only
+      (see above). Needs a real run - a dev machine with `~/.m2/settings.xml`
+      configured, or CI - before calling this fully done and rolling it out
+      to the rest of the platform.
+- [ ] tenant-management-service and every other microservice still resolve
+      their parent via a local relative path - not touched yet, waiting on
+      the auth-service pilot being fully confirmed first.
+- [x] One of the two adoption costs documented in `README.md` turned out to
+      be real on first contact: `dependencyConvergence` caught the
+      jjwt-impl/jjwt-jackson gap above immediately. Spotless/Google-Java-Format
+      enforcement is still unexercised - auth-service's existing code style
+      hasn't been checked against it (the plugin isn't currently activated
+      in auth-service's own POM, only available via the parent's
+      `pluginManagement` if a service opts in).
 
 ## Security & compliance
 

@@ -49,6 +49,13 @@ checklist structure.
       tag Paketo never actually built) - removed, replaced with an explicit
       build-time image name override
 - [x] `reusable-security.yml` missing `actions/setup-java` entirely - fixed
+- [x] BOM's `dependencyConvergence` gap on jjwt (only `jjwt-api` pinned,
+      `jjwt-impl`/`jjwt-jackson` not, at a version mismatched with what
+      auth-service already used) - found on the first real adoption
+      attempt, fixed by pinning all three together
+- [x] README's claim that a consuming service doesn't need its own
+      `<repositories>` entry - empirically wrong, disproven with a
+      genuinely empty local `.m2`, corrected
 
 ## Documentation & repo hygiene
 
@@ -64,7 +71,10 @@ checklist structure.
 
 ## Adoption (the actual point of this repo)
 
-- [ ] At least one real microservice migrated from its current local
-      relative-path parent to `iiotedge-parent`/`iiotedge-bom`, resolved
-      through real network access to GitHub Packages (not just the local
-      `.m2` simulation used to verify this repo's own correctness)
+- [x] auth-service migrated from its local relative-path parent to
+      `iiotedge-parent`/`iiotedge-bom` - `mvn clean verify` passes
+      standalone (185/185 tests, SpotBugs clean, JaCoCo gate met)
+- [ ] That migration confirmed against **real** GitHub Packages credentials,
+      not just a local `.m2` proxy + a confirmatory 401 (right URL, missing
+      auth) - needs an actual dev machine or CI run with `GH_TOKEN` set
+- [ ] The rest of the microservices migrated - waiting on the above

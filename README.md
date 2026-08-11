@@ -75,7 +75,23 @@ clean-cache) run surfaced, treat this as unconfirmed until it's actually been ru
   <groupId>com.iiotedge.build</groupId>
   <artifactId>iiotedge-parent</artifactId>
   <version>2025.08.18</version>
+  <relativePath/>
 </parent>
+
+<!-- Required even though the parent's own <repositories> block already
+     points here - confirmed with a genuinely empty local .m2 cache that
+     Maven only checks Central otherwise and never attempts GitHub Packages
+     at all. The not-yet-resolved parent can't bootstrap its own
+     resolution; a child needs its own entry to find the parent in the
+     first place. Only the parent's *dependencies* (like the BOM it
+     imports) benefit from its repository list, once the parent itself has
+     already been fetched. -->
+<repositories>
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/iiotedge/platform-build</url>
+  </repository>
+</repositories>
 
 <dependencyManagement>
   <dependencies>
@@ -90,11 +106,16 @@ clean-cache) run surfaced, treat this as unconfirmed until it's actually been ru
 </dependencyManagement>
 ```
 
-A service using `iiotedge-parent` as its actual `<parent>` (no `<relativePath/>`
-needed - the parent's own `<repositories>` block already points at this repo) doesn't
-need a separate `<repositories>` entry of its own to resolve it. If a service instead
-only imports the BOM without using this parent, it still needs that repository
-declared itself.
+The explicit empty `<relativePath/>` matters too - without it, Maven's default
+behavior is to check `../pom.xml` *before* falling back to the repository, which
+silently resolves to whatever happens to sit one directory up in a monorepo
+checkout instead of the intended published parent.
+
+If a consuming service's own `spring-boot-maven-plugin` execution already
+existed before adopting this parent, give it an explicit `<id>repackage</id>`.
+Once the parent chain goes through `spring-boot-starter-parent` for real (this
+parent's own parent), Boot's pluginManagement binds a default execution under
+that same id - without matching it, the goal runs twice.
 
 **Two real costs of adopting this parent, worth knowing before you do:**
 - `spotless-maven-plugin` is configured with `apply`+`check` bound, enforcing Google

@@ -68,7 +68,7 @@
         <confluent.avro.version>7.7.1</confluent.avro.version>
 
         <!-- Security -->
-        <jjwt.version>0.12.5</jjwt.version>
+        <jjwt.version>0.12.6</jjwt.version>
         <bouncycastle.version>1.78.1</bouncycastle.version>
         <passay.version>1.7.4</passay.version>
         <shedlock.version>5.16.0</shedlock.version>
@@ -207,9 +207,25 @@
             </dependency>
 
             <!-- Security -->
+            <!-- All three must move together - api/impl/jackson at mismatched
+                 versions is exactly the kind of thing dependencyConvergence
+                 exists to catch (and did, the first time a real service -
+                 auth-service - adopted this BOM: impl/jackson weren't pinned
+                 here at all, so their own transitive jjwt-api requirement
+                 got silently overridden to whatever version *was* pinned). -->
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
             </dependency>
             <dependency>
