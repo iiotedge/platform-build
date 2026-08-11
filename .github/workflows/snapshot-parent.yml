@@ -94,13 +94,18 @@ jobs:
           BOM_POM="iotmining-bom/pom.xml"
           PARENT_POM="iotmining-parent/pom.xml"
 
-          BOM_VER=$(xmllint --xpath "string(/project/version)" "$BOM_POM")
+          # Maven POMs declare a default XML namespace (xmlns="http://maven.apache.org/POM/4.0.0"),
+          # so a plain /project/version xpath silently matches nothing and
+          # returns an empty string - confirmed the hard way (this exact
+          # bug shipped once already). local-name() sidesteps the namespace.
+          BOM_VER=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$BOM_POM")
           SNAPSHOT_VER="${BOM_VER%-SNAPSHOT}-SNAPSHOT"
 
           mvn -q -N -f "$BOM_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
           mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
-          xmlstarlet ed -P -L \
-            -u "//dependency[artifactId='iotmining-bom']/version" -v "$SNAPSHOT_VER" \
+          # xmlstarlet needs the namespace registered too (-N), for the same reason.
+          xmlstarlet ed -P -L -N x="http://maven.apache.org/POM/4.0.0" \
+            -u "//x:dependency[x:artifactId='iotmining-bom']/x:version" -v "$SNAPSHOT_VER" \
             "$PARENT_POM"
 
           echo "Snapshot version: $SNAPSHOT_VER"

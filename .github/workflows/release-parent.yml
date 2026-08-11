@@ -96,9 +96,15 @@ jobs:
           BOM_POM="iotmining-bom/pom.xml"
           PARENT_POM="iotmining-parent/pom.xml"
 
-          BOM_VER=$(xmllint --xpath "string(/project/version)" "$BOM_POM")
-          PARENT_VER=$(xmllint --xpath "string(/project/version)" "$PARENT_POM")
-          IMPORT_VER=$(xmllint --xpath "string(//dependency[artifactId='iotmining-bom']/version)" "$PARENT_POM")
+          # Maven POMs declare a default XML namespace (xmlns="http://maven.apache.org/POM/4.0.0"),
+          # so a plain /project/version xpath silently matches nothing and
+          # returns an empty string instead of erroring - confirmed the hard
+          # way (this exact bug shipped once already, in the sibling
+          # snapshot-parent.yml workflow). local-name() sidesteps it for reads;
+          # xmlstarlet needs the namespace registered via -N for writes.
+          BOM_VER=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$BOM_POM")
+          PARENT_VER=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$PARENT_POM")
+          IMPORT_VER=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iotmining-bom']/*[local-name()='version'])" "$PARENT_POM")
 
           if [[ "$BOM_VER" != "$TAG" ]]; then
             mvn -q -N -f "$BOM_POM" versions:set -DnewVersion="$TAG" -DgenerateBackupPoms=false
@@ -107,15 +113,19 @@ jobs:
             mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$TAG" -DgenerateBackupPoms=false
           fi
           if [[ "$IMPORT_VER" != "$TAG" ]]; then
-            xmlstarlet ed -P -L \
-              -u "//dependency[artifactId='iotmining-bom']/version" -v "$TAG" \
+            xmlstarlet ed -P -L -N x="http://maven.apache.org/POM/4.0.0" \
+              -u "//x:dependency[x:artifactId='iotmining-bom']/x:version" -v "$TAG" \
               "$PARENT_POM"
           fi
 
+          # Plain bash echo, not an embedded newline inside the xpath string -
+          # XPath string literals don't interpret \n or &#10; as an actual
+          # newline (confirmed: both print as literal text), so building the
+          # separator that way silently ran every value together on one line.
           echo "Post-update check:"
-          xmllint --xpath "concat('BOM=',/project/version,'\n')" "$BOM_POM"
-          xmllint --xpath "concat('PARENT=',/project/version,'\n')" "$PARENT_POM"
-          xmllint --xpath "concat('IMPORT=',//dependency[artifactId='iotmining-bom']/version,'\n')" "$PARENT_POM"
+          echo "BOM=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$BOM_POM")"
+          echo "PARENT=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$PARENT_POM")"
+          echo "IMPORT=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iotmining-bom']/*[local-name()='version'])" "$PARENT_POM")"
 
       # ---- Critical: install the BOM locally BEFORE anything that imports it ----
       - name: Install BOM locally
