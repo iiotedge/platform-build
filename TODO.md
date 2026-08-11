@@ -1,0 +1,75 @@
+# TODO
+
+Known gaps, prioritized. See `CHECKLIST.md` for the full done/open list.
+
+## Resolved (kept here briefly for context, not action items)
+
+- ~~Org mismatch~~ - every `<url>`/`<scm>`/`<distributionManagement>`, the
+  local git remote, and the actual Maven groupId/artifactId (`com.iotmining.build`
+  -> `com.iiotedge.build`, `iotmining-parent`/`iotmining-bom` ->
+  `iiotedge-parent`/`iiotedge-bom`) all now consistently say `iiotedge`.
+- ~~Version drift~~ / ~~invalid wildcard GitHub Packages URL~~ / ~~tag-pattern
+  mismatch between the workflow and its own README~~ - all fixed.
+- ~~xmllint/xmlstarlet silently no-op'd against namespaced Maven POMs~~ - real
+  bug, shipped once, caught via an actual failed CI run and fixed with
+  `local-name()`/`-N` namespace registration.
+- ~~`versions:set` on the parent failed because the BOM wasn't installed under
+  its new version yet~~ - real ordering bug, also caught via a real CI
+  failure; both workflows now version+install the BOM before touching the
+  parent's version at all.
+- ~~SpotBugs/JaCoCo coverage gate missing from the parent~~ - added, matching
+  auth-service/tenant-management-service's already-adopted thresholds.
+- ~~ShedLock not pinned in the BOM~~ - added.
+- ~~No LICENSE file despite all 3 POMs declaring Apache 2.0~~ - added.
+
+**First real publish confirmed working**: `com.iiotedge.build:iiotedge-parent`
+and `:iiotedge-bom` are live on GitHub Packages under the `iiotedge` org.
+
+## Publishing pipeline
+
+- [ ] **`snapshot-parent.yml` has never actually been run** - only the
+      tag-triggered `release-parent.yml` path has been confirmed working
+      against real GitHub Packages. The branch-push path shares the same
+      code patterns that already broke release-parent.yml twice, but hasn't
+      been exercised for real yet.
+- [ ] **`bump-services.yml`'s hardcoded service list** (`auth`,
+      `api-gateway`, `tms`, `pricing-catalog`, `notification`, `alert`,
+      `rule-engine`) doesn't match any confirmed real repo name surveyed in
+      this org. Fix `core.getInput()` was applied, but this workflow is
+      still not trustworthy to actually run until the list is real.
+- [ ] The 4 `reusable-*.yml` workflows (build/sonar/container/security) are
+      not called from anywhere yet - they're meant to be invoked by
+      individual service repos' own CI via `workflow_call` once those
+      services adopt this parent, but that hasn't happened. Bugs were
+      already found and fixed in `reusable-container.yml`/
+      `reusable-security.yml` specifically because nothing was exercising
+      them - worth a real end-to-end trial run before depending on them.
+- [ ] `reusable-sonar.yml` invokes `sonar:sonar` with no pinned plugin
+      version - reproducible builds want a `sonar-maven-plugin` version in
+      `iiotedge-parent`'s `pluginManagement`, not "whatever's latest today".
+- [ ] Old `com.iotmining.build:iotmining-parent`/`:iotmining-bom` packages
+      (published once, before the rename) are still visible/orphaned in
+      GitHub Packages under the `iiotedge` org. Renaming doesn't delete
+      prior versions - manual cleanup via the GitHub UI/API if wanted.
+
+## Adoption
+
+- [ ] **No service actually consumes `iiotedge-parent`/`iiotedge-bom` yet.**
+      This is the actual point of the repo - auth-service and
+      tenant-management-service both still resolve their parent via a local
+      relative path. Migrating even one real service end-to-end (through
+      actual network resolution against GitHub Packages, not just the local
+      `.m2` simulation used to verify this repo) is the real remaining
+      proof this works.
+- [ ] The two adoption costs documented in `README.md` (Spotless/Google-Java-
+      Format enforcement, strict `dependencyConvergence`) are theoretical
+      until a real service with an organically-grown dependency tree and
+      existing code style actually adopts this parent and hits them.
+
+## Security & compliance
+
+- [ ] OWASP dependency-check (`security` profile, `failBuildOnCVSS=7`) and
+      CycloneDX SBOM generation (`sbom` profile) are both configured but not
+      scheduled or invoked anywhere in CI - same gap auth-service's own
+      `TODO.md` notes for itself (needs an NVD API key, fine for CI, not for
+      every local build).

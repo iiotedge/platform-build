@@ -3,6 +3,10 @@
 Central **BOM** and **Parent POM** for all IoTMining services, published to
 **GitHub Packages (Maven)** from this repo (`iiotedge/platform-build`).
 
+`com.iiotedge.build:iiotedge-parent`/`:iiotedge-bom` are live - the
+tag-triggered release path has been run for real and confirmed publishing
+successfully under the `iiotedge` org. License: Apache 2.0 (see `LICENSE`).
+
 ## Why this exists
 
 Without this, a service's `pom.xml` resolves its parent via a **local relative path**
@@ -41,17 +45,28 @@ alone for consistent dependency versions across the platform.
 1. Push a tag matching the workflow's trigger: `git tag 2025.08.18 && git push --tags`
    (a `v`-prefixed form like `v2025.08.18` also works - the workflow strips the `v`
    before using it as the actual Maven version, so both forms publish identically).
-2. `release-parent.yml` fires: aligns both POMs' own `<version>` and the parent's BOM
-   import to the tag, installs the BOM locally first (it's a dependency of the parent),
-   then deploys BOM then Parent to GitHub Packages, in that order.
+2. `release-parent.yml` fires: versions and installs the BOM locally first (the
+   parent's own version can't be set until the BOM it imports is resolvable under its
+   new version - ordering that mattered enough to break this workflow twice before it
+   was right), then aligns the parent's version and BOM import, then deploys BOM then
+   Parent to GitHub Packages.
+
+**This path has been run for real and confirmed working** - the packages currently
+live on GitHub Packages came from an actual tagged release, not just local simulation.
 
 ## Snapshots
 
-Push to `main` → `snapshot-parent.yml` deploys the version currently checked into each
-`pom.xml` as-is. Note this only behaves like a true Maven snapshot if that version
-actually ends in `-SNAPSHOT`; as checked in today it's a plain `2025.08.18`, so repeated
-pushes to `main` will attempt to redeploy under that same fixed version rather than a
-timestamped snapshot. Worth fixing before relying on this path day-to-day.
+Push to `main` → `snapshot-parent.yml` forces a real `-SNAPSHOT`-suffixed version
+(the same way the release path forces a tag-matched version - the checked-in
+`pom.xml` version is a plain release number, not `-SNAPSHOT`, so this step is
+what makes repeated pushes actually behave like Maven snapshots instead of trying
+to redeploy the same fixed version) before installing and deploying, in the same
+BOM-before-parent order as the release path.
+
+**Unlike the release path above, this one hasn't been exercised against real
+GitHub Packages yet** - only verified via local simulation with a clean `.m2`
+cache. Given the release path broke twice in ways only a real (or truly
+clean-cache) run surfaced, treat this as unconfirmed until it's actually been run.
 
 ## Consume in a Service
 
@@ -117,3 +132,25 @@ export GH_TOKEN=<PAT with read:packages, write:packages if publishing>
 Settings → Actions → General → Workflow permissions → **Read and write permissions**
 (needed for the default `GITHUB_TOKEN` to publish packages; `GH_PACKAGES_TOKEN` is a
 PAT fallback if org policy blocks that).
+
+## Quality gates `iiotedge-parent` centralizes
+
+A service that activates these plugins (adding a bare `<plugin>` entry with no
+version/config of its own, inheriting everything from this parent) gets:
+
+| Gate | Threshold |
+|---|---|
+| JaCoCo instruction coverage | >=85% |
+| JaCoCo branch coverage | >=65% |
+| SpotBugs + FindSecBugs | Medium+ severity, Max effort |
+| Enforcer | Java 21+, Maven 3.9+, no duplicate POM dependency versions, strict dependency convergence |
+
+Matches the thresholds auth-service and tenant-management-service already
+enforce locally in their own POMs - adopting this parent is meant to be a
+lateral move for them, not a downgrade. Each consuming service still supplies
+its own `spotbugs-exclude.xml` (findings are necessarily service-specific);
+only the plugin version and base config are centralized here.
+
+`ci`/`it`/`sbom`/`security` profiles are also available (OWASP dependency-check,
+CycloneDX SBOM, Spotless/Google-Java-Format) - see `TODO.md` for which of these
+are configured but not yet actually scheduled anywhere.
