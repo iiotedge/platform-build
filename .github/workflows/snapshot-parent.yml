@@ -89,6 +89,17 @@ jobs:
       # version as immutable once published, so repeat pushes would fail or
       # silently overwrite. Force a real SNAPSHOT version instead, same way
       # release-parent.yml forces a real release version from the tag.
+      #
+      # Ordering here is load-bearing, confirmed the hard way: `mvn
+      # versions:set -f iotmining-parent/pom.xml` has to build the parent's
+      # full effective model just to change its own <version> tag, which
+      # means resolving its <dependencyManagement> import of iotmining-bom -
+      # using whatever version that import currently says. If the import
+      # still points at the OLD version (because BOM hasn't been re-pointed
+      # yet) and that old version was never published/installed, this fails
+      # with "Non-resolvable import POM" before it ever gets to set anything.
+      # So: version + install BOM, THEN repoint the import, THEN touch the
+      # parent's own version - never the other way around.
       - name: Force a -SNAPSHOT version
         run: |
           BOM_POM="iotmining-bom/pom.xml"
@@ -102,17 +113,15 @@ jobs:
           SNAPSHOT_VER="${BOM_VER%-SNAPSHOT}-SNAPSHOT"
 
           mvn -q -N -f "$BOM_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
-          mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
-          # xmlstarlet needs the namespace registered too (-N), for the same reason.
+          mvn -B -s "$GPR_SETTINGS" -DskipTests -f "$BOM_POM" clean install
+
+          # xmlstarlet needs the namespace registered too (-N), for the same reason as xmllint above.
           xmlstarlet ed -P -L -N x="http://maven.apache.org/POM/4.0.0" \
             -u "//x:dependency[x:artifactId='iotmining-bom']/x:version" -v "$SNAPSHOT_VER" \
             "$PARENT_POM"
+          mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$SNAPSHOT_VER" -DgenerateBackupPoms=false
 
           echo "Snapshot version: $SNAPSHOT_VER"
-
-      # ---- Critical: install the BOM locally BEFORE Parent (since it imports it) ----
-      - name: Install BOM locally
-        run: mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always -f iotmining-bom/pom.xml clean install
 
       - name: Deploy BOM (SNAPSHOT)
         run: |

@@ -85,8 +85,18 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y libxml2-utils xmlstarlet
 
-      # Align POM versions with the tag (only on tag builds)
-      - name: Align versions with tag
+      # Align BOM's own version with the tag (only on tag builds). Split from
+      # aligning the parent (below) because of a load-bearing ordering
+      # constraint, confirmed the hard way: `mvn versions:set -f
+      # iotmining-parent/pom.xml` has to build the parent's full effective
+      # model just to change its own <version> tag, which means resolving
+      # its <dependencyManagement> import of iotmining-bom - using whatever
+      # version that import currently says. That import can only resolve
+      # once the BOM has actually been installed under the version it's
+      # about to be repointed to, which is why "Install BOM locally" sits
+      # between this step and "Align Parent version with tag" rather than
+      # after both.
+      - name: Align BOM version with tag
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           TAG="${GITHUB_REF##*/}"
@@ -94,28 +104,45 @@ jobs:
           echo "Tag is: ${TAG}"
 
           BOM_POM="iotmining-bom/pom.xml"
-          PARENT_POM="iotmining-parent/pom.xml"
 
           # Maven POMs declare a default XML namespace (xmlns="http://maven.apache.org/POM/4.0.0"),
           # so a plain /project/version xpath silently matches nothing and
           # returns an empty string instead of erroring - confirmed the hard
           # way (this exact bug shipped once already, in the sibling
-          # snapshot-parent.yml workflow). local-name() sidesteps it for reads;
-          # xmlstarlet needs the namespace registered via -N for writes.
+          # snapshot-parent.yml workflow). local-name() sidesteps it.
           BOM_VER=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$BOM_POM")
-          PARENT_VER=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$PARENT_POM")
-          IMPORT_VER=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iotmining-bom']/*[local-name()='version'])" "$PARENT_POM")
-
           if [[ "$BOM_VER" != "$TAG" ]]; then
             mvn -q -N -f "$BOM_POM" versions:set -DnewVersion="$TAG" -DgenerateBackupPoms=false
           fi
-          if [[ "$PARENT_VER" != "$TAG" ]]; then
-            mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$TAG" -DgenerateBackupPoms=false
-          fi
+
+      # ---- Critical: install the BOM locally BEFORE anything that imports it ----
+      - name: Install BOM locally
+        run: mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always -f iotmining-bom/pom.xml clean install
+
+      # Now that the (possibly just-retagged) BOM is installed locally under
+      # its final version, it's safe to repoint the parent's import and set
+      # the parent's own version - both can now actually resolve.
+      - name: Align Parent version with tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          TAG="${TAG#v}"
+          echo "Tag is: ${TAG}"
+
+          BOM_POM="iotmining-bom/pom.xml"
+          PARENT_POM="iotmining-parent/pom.xml"
+
+          PARENT_VER=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$PARENT_POM")
+          IMPORT_VER=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iotmining-bom']/*[local-name()='version'])" "$PARENT_POM")
+
           if [[ "$IMPORT_VER" != "$TAG" ]]; then
+            # xmlstarlet needs the namespace registered too (-N), for the same reason as xmllint above.
             xmlstarlet ed -P -L -N x="http://maven.apache.org/POM/4.0.0" \
               -u "//x:dependency[x:artifactId='iotmining-bom']/x:version" -v "$TAG" \
               "$PARENT_POM"
+          fi
+          if [[ "$PARENT_VER" != "$TAG" ]]; then
+            mvn -q -N -f "$PARENT_POM" versions:set -DnewVersion="$TAG" -DgenerateBackupPoms=false
           fi
 
           # Plain bash echo, not an embedded newline inside the xpath string -
@@ -126,10 +153,6 @@ jobs:
           echo "BOM=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$BOM_POM")"
           echo "PARENT=$(xmllint --xpath "string(/*[local-name()='project']/*[local-name()='version'])" "$PARENT_POM")"
           echo "IMPORT=$(xmllint --xpath "string(//*[local-name()='dependency'][*[local-name()='artifactId']='iotmining-bom']/*[local-name()='version'])" "$PARENT_POM")"
-
-      # ---- Critical: install the BOM locally BEFORE anything that imports it ----
-      - name: Install BOM locally
-        run: mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always -f iotmining-bom/pom.xml clean install
 
       # Tag: deploy to GH Packages; Branch: just verify
       - name: Build/Publish BOM
