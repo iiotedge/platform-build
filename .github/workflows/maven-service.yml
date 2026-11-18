@@ -35,6 +35,10 @@ name: maven-service
 #     local Maven repository. Use it while those modules are not published.
 #   - platform-build-ref does the same for iiotedge-bom and iiotedge-parent,
 #     for a parent version that is not published yet.
+#
+# The Trivy gate fails the image job (nothing is pushed) on CRITICAL
+# vulnerabilities that have a fixed version. trivy-blocking: false turns it
+# into a warning; use that only as a short, deliberate exception.
 
 on:
   workflow_call:
@@ -102,6 +106,12 @@ on:
         default: CRITICAL
       trivy-ignore-unfixed:
         description: Do not fail on vulnerabilities that have no fixed version yet.
+        type: boolean
+        default: true
+      trivy-blocking:
+        description: >-
+          Fail the image job (no push) when the Trivy gate finds vulnerabilities. Setting
+          false pushes anyway and only reports; meant as a short, deliberate exception.
         type: boolean
         default: true
       release:
@@ -178,8 +188,8 @@ jobs:
           # poms use for GitHub Packages. It names environment variables only;
           # the token is passed to the Maven steps below as GITHUB_TOKEN.
           server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
+          server-username-env-var: GITHUB_ACTOR
+          server-password-env-var: GITHUB_TOKEN
 
       - name: Set up Maven ${{ env.MAVEN_VERSION }}
         run: |
@@ -190,6 +200,14 @@ jobs:
           echo "${MAVEN_SHA512}  ${archive}" | sha512sum --check --quiet
           tar -xzf "$archive" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/apache-maven-${MAVEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+      # Docker Engine 29 on the hosted runners rejects the old default API
+      # version of the docker-java client inside Testcontainers before
+      # 1.21.4 (iiotedge-bom 2025.08.18 manages 1.20.x), so Testcontainers
+      # tests cannot find Docker. Pinning a supported API version fixes it
+      # and is harmless for newer Testcontainers versions.
+      - name: Docker API version for Testcontainers
+        run: echo "api.version=1.44" > "$HOME/.docker-java.properties"
 
       - name: Start Redis
         if: inputs.redis
@@ -394,20 +412,23 @@ jobs:
           severity: ${{ inputs.trivy-severity }}
           ignore-unfixed: ${{ inputs.trivy-ignore-unfixed }}
           exit-code: '1'
+        continue-on-error: ${{ !inputs.trivy-blocking }}
 
-      - name: Report blocking vulnerabilities
-        if: failure() && steps.gate.outcome == 'failure'
+      - name: Report vulnerabilities found by the gate
+        if: always() && steps.gate.outcome == 'failure'
         env:
           SEVERITY: ${{ inputs.trivy-severity }}
           PRIVATE: ${{ github.event.repository.private }}
+          FIXABLE: ${{ inputs.trivy-ignore-unfixed && ' that have a fixed version' || '' }}
+          LEVEL: ${{ inputs.trivy-blocking && 'error' || 'warning' }}
         run: |
           count=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-gate.json 2>/dev/null || echo unknown)
           where="the code scanning alerts of this repository"
           [[ "$PRIVATE" == true ]] && where="the trivy-gate artifact of this run"
-          echo "::error::The image has ${count} ${SEVERITY} vulnerabilities with a fix available. Details: ${where}."
+          echo "::${LEVEL}::The image has ${count} ${SEVERITY} vulnerabilities${FIXABLE}. Details: ${where}."
 
       - name: Upload Trivy gate result (private repositories)
-        if: failure() && steps.gate.outcome == 'failure' && github.event.repository.private
+        if: always() && steps.gate.outcome == 'failure' && github.event.repository.private
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-gate
