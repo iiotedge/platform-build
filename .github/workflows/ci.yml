@@ -1,0 +1,76 @@
+name: CI
+
+# Pull request checks for this repository: the BOM and the parent must
+# build, and every workflow (including the shared maven-service.yml that
+# the service repositories call) must pass actionlint. Publishing stays in
+# snapshot-parent.yml (main) and release-parent.yml (tags).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ['**/*.md', 'LICENSE', '.gitignore']
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  poms:
+    name: Build BOM and parent
+    # Draft pull requests do not use Actions minutes; marking one ready runs it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          server-id: github
+          server-username-env-var: GITHUB_ACTOR
+          server-password-env-var: GITHUB_TOKEN
+
+      # The parent imports the BOM, so the BOM from this pull request is
+      # installed locally first.
+      - name: Install BOM and verify parent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn -B -ntp -f iiotedge-bom/pom.xml install
+          mvn -B -ntp -f iiotedge-parent/pom.xml verify
+
+      - name: Keep this build out of the Maven cache
+        if: always()
+        run: rm -rf "$HOME/.m2/repository/com/iiotedge"
+
+  workflows:
+    name: Lint workflows
+    # Draft pull requests do not use Actions minutes; marking one ready runs it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        run: |
+          docker run --rm --volume "$PWD:/repo" --workdir /repo \
+            rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color

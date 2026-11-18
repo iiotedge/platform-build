@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Workflow actions are pinned by commit SHA; Dependabot keeps the SHA
+  # and its version comment current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+
+  # Library versions managed by iiotedge-bom and plugin versions in
+  # iiotedge-parent. Major upgrades (Spring Boot, Spring Cloud, ...) are
+  # planned migrations and are not proposed here.
+  - package-ecosystem: maven
+    directories: [/iiotedge-bom, /iiotedge-parent]
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      maven-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+    commit-message:
+      prefix: build

@@ -148,11 +148,57 @@ export GH_ACTOR=<your-gh-username>
 export GH_TOKEN=<PAT with read:packages, write:packages if publishing>
 ```
 
-## GitHub Repo Setting Required
+## CI tokens
 
-Settings → Actions → General → Workflow permissions → **Read and write permissions**
-(needed for the default `GITHUB_TOKEN` to publish packages; `GH_PACKAGES_TOKEN` is a
-PAT fallback if org policy blocks that).
+No personal access token is needed in CI. The publishing workflows request
+`packages: write` for their own `GITHUB_TOKEN`, and any workflow's `GITHUB_TOKEN`
+can read the public packages of this repository (GitHub Packages still requires
+some credential for Maven reads, so anonymous builds get 401). A dev machine
+still needs a PAT (classic) with `read:packages`, as described above.
+
+## Shared service pipeline (`.github/workflows/maven-service.yml`)
+
+A reusable workflow (`on: workflow_call`) with the standard pipeline for Spring
+Boot services: Java 21 build and tests on every pull request; on `main` and
+version tags also a container image (Trivy-scanned, pushed to
+`ghcr.io/<owner>/<repo>`) and, for tags, a GitHub Release. Service repositories
+call it from a thin `.github/workflows/ci.yml`:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+    tags: ['v*.*.*', '20*.*.*']
+permissions: {}
+jobs:
+  pipeline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    uses: iiotedge/platform-build/.github/workflows/maven-service.yml@<commit-sha>
+    permissions:
+      contents: write          # GitHub Release (tags)
+      packages: write          # GHCR push (main and tags)
+      security-events: write   # Trivy results to code scanning (public repos)
+    with:
+      common-modules: data base   # build these iiotedge/common modules from source
+```
+
+Callers pin a commit SHA. To roll out a pipeline change, merge it here and then
+move each caller to the new commit. The inputs are documented at the top of the
+workflow file: `common-modules`/`common-ref`, `platform-build-ref` (build an
+unpublished parent from source), `redis` (Redis on localhost:6379 for tests),
+`postgres` (PostgreSQL on localhost:5432, Spring datasource pointed at it),
+`trivy*`, `image-name`, `container-image`, `image-on-pull-request`, `release`.
+
+`ci.yml` in this repository runs on pull requests: it builds the BOM and the
+parent and runs actionlint over every workflow, including `maven-service.yml`.
+
+Actions minutes: draft pull requests are skipped (the `if:` above) until they
+are marked ready for review; superseded runs are cancelled; documentation-only
+changes do not run; Trivy and the image only run on `main` and version tags;
+every job has a timeout; the Maven repository is cached. Validate workflow
+changes locally first (`actionlint`, and the same `mvn` commands with JDK 21).
 
 ## Quality gates `iiotedge-parent` centralizes
 
