@@ -56,13 +56,11 @@ missing here. Still needs a real credentialed run (a dev machine or CI with
       `rule-engine`) doesn't match any confirmed real repo name surveyed in
       this org. Fix `core.getInput()` was applied, but this workflow is
       still not trustworthy to actually run until the list is real.
-- [ ] The 4 `reusable-*.yml` workflows (build/sonar/container/security) are
-      not called from anywhere yet - they're meant to be invoked by
-      individual service repos' own CI via `workflow_call` once those
-      services adopt this parent, but that hasn't happened. Bugs were
-      already found and fixed in `reusable-container.yml`/
-      `reusable-security.yml` specifically because nothing was exercising
-      them - worth a real end-to-end trial run before depending on them.
+- [x] ~~The 4 `reusable-*.yml` workflows were not called from anywhere~~ -
+      `reusable-build.yml` and `reusable-container.yml` were replaced by
+      `maven-service.yml`, which the service repositories call.
+      `reusable-security.yml` (OWASP + SBOM) and `reusable-sonar.yml` are
+      still not called or scheduled anywhere.
 - [ ] `reusable-sonar.yml` invokes `sonar:sonar` with no pinned plugin
       version - reproducible builds want a `sonar-maven-plugin` version in
       `iiotedge-parent`'s `pluginManagement`, not "whatever's latest today".

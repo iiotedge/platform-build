@@ -18,21 +18,18 @@ jobs:
 
     env:
       GH_REPO: ${{ github.repository }}             # e.g., iiotedge/platform-build
-      HAS_PAT: ${{ secrets.GH_PACKAGES_TOKEN != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Java 21 (and Maven cache)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-          # we’ll pass our own settings.xml to mvn (-s), so these server-* are not relied on
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: ${{ secrets.GITHUB_TOKEN }}
 
       # Write a clean settings.xml and use it for ALL mvn runs (-s).
       - name: Write clean Maven settings for GitHub Packages
@@ -180,65 +177,3 @@ jobs:
             mvn -B -s "$GPR_SETTINGS" -DskipTests -Dstyle.color=always \
                 -f iiotedge-parent/pom.xml clean verify
           fi
-
-      # Optional fallback if org policy blocks GITHUB_TOKEN for packages
-      - name: Retry with PAT fallback
-        if: ${{ failure() && env.HAS_PAT == 'true' }}
-        env:
-          GH_ACTOR: ${{ github.actor }}
-          GH_PAT: ${{ secrets.GH_PACKAGES_TOKEN }}
-        run: |
-          echo "FALLBACK: retrying deploy with PAT…"
-          SETTINGS="$RUNNER_TEMP/gpr-settings-pat.xml"
-          cat > "$SETTINGS" <<XML
-          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
-            <servers>
-              <server>
-                <id>github</id>
-                <username>${GH_ACTOR}</username>
-                <password>${GH_PAT}</password>
-              </server>
-            </servers>
-            <profiles>
-              <profile>
-                <id>github-packages</id>
-                <repositories>
-                  <repository>
-                    <id>github</id>
-                    <url>https://maven.pkg.github.com/${{ env.GH_REPO }}</url>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
-                  </repository>
-                </repositories>
-                <pluginRepositories>
-                  <pluginRepository>
-                    <id>github-plugins</id>
-                    <url>https://maven.pkg.github.com/${{ env.GH_REPO }}</url>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
-                  </pluginRepository>
-                </pluginRepositories>
-              </profile>
-            </profiles>
-            <activeProfiles>
-              <activeProfile>github-packages</activeProfile>
-            </activeProfiles>
-          </settings>
-          XML
-
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            mvn -B -s "$SETTINGS" -DskipTests -Dstyle.color=always \
-                -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-                -f iiotedge-bom/pom.xml \
-                org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
-
-            mvn -B -s "$SETTINGS" -DskipTests -Dstyle.color=always \
-                -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/${GH_REPO} \
-                -f iiotedge-parent/pom.xml \
-                org.apache.maven.plugins:maven-deploy-plugin:3.1.3:deploy
-          else
-            echo "Branch build failed earlier; PAT fallback only applies to tag publishes. Skipping."
-          fi
-

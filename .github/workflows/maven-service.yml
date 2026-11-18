@@ -1,0 +1,485 @@
+name: maven-service
+
+# Shared CI/CD pipeline for iiotedge Spring Boot services (Java 21, Maven,
+# iiotedge-parent). Each service repository calls it from a thin
+# .github/workflows/ci.yml, pinned to a commit of this repository:
+#
+#   permissions: {}
+#   jobs:
+#     pipeline:
+#       uses: iiotedge/platform-build/.github/workflows/maven-service.yml@<commit-sha>
+#       permissions:
+#         contents: write          # release job (version tags only)
+#         packages: write          # image job pushes to GHCR (main and version tags only)
+#         security-events: write   # image job uploads Trivy results (public repositories)
+#       with:
+#         common-modules: data base   # optional, see below
+#
+# The caller has to grant all three permissions even when a job is skipped,
+# because GitHub checks them when it loads this file. Each job below drops
+# back to what it needs: the build job, which runs pull request code, only
+# reads.
+#
+# Jobs
+#   build    every event   mvn verify with Java 21 (tests, coverage and
+#                          static analysis come from iiotedge-parent)
+#   image    main, tags    docker build, Trivy scan, push to
+#                          ghcr.io/<owner>/<image-name>
+#   release  version tags  GitHub Release with generated notes
+#
+# Internal dependencies need no personal access token:
+#   - iiotedge-parent and iiotedge-bom come from GitHub Packages. Public
+#     packages there can be read with any workflow's GITHUB_TOKEN.
+#   - common-modules builds the listed iiotedge/common modules from source
+#     (anonymous clone of the public repository) and installs them into the
+#     local Maven repository. Use it while those modules are not published.
+#   - platform-build-ref does the same for iiotedge-bom and iiotedge-parent,
+#     for a parent version that is not published yet.
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: Image name under ghcr.io/<owner>/. Defaults to the repository name.
+        type: string
+        default: ''
+      dockerfile:
+        description: Dockerfile path, relative to the repository root.
+        type: string
+        default: Dockerfile
+      container-image:
+        description: Build and publish a container image on main and version tags.
+        type: boolean
+        default: true
+      image-on-pull-request:
+        description: Also build and scan the image on pull requests (never pushed). Costs extra minutes.
+        type: boolean
+        default: false
+      java-version:
+        description: Temurin JDK version.
+        type: string
+        default: '21'
+      maven-goals:
+        description: Maven goals of the build job.
+        type: string
+        default: verify
+      maven-args:
+        description: Extra Maven arguments for the build job.
+        type: string
+        default: ''
+      common-modules:
+        description: >-
+          iiotedge/common modules to build from source before the service, e.g. "data base utils".
+          Known modules - data base interfaces utils proto audit security message transport.
+          Modules that the listed ones depend on are added automatically.
+        type: string
+        default: ''
+      common-ref:
+        description: Branch, tag or commit of iiotedge/common used with common-modules.
+        type: string
+        default: main
+      platform-build-ref:
+        description: >-
+          Build iiotedge-bom and iiotedge-parent from this branch, tag or commit of
+          iiotedge/platform-build instead of resolving them from GitHub Packages.
+        type: string
+        default: ''
+      redis:
+        description: Start a Redis server on localhost:6379 for the tests of the build job.
+        type: boolean
+        default: false
+      redis-image:
+        description: Redis image used when redis is true.
+        type: string
+        default: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
+      trivy:
+        description: Scan the image with Trivy before it is pushed.
+        type: boolean
+        default: true
+      trivy-severity:
+        description: Severities that fail the image job.
+        type: string
+        default: CRITICAL
+      trivy-ignore-unfixed:
+        description: Do not fail on vulnerabilities that have no fixed version yet.
+        type: boolean
+        default: true
+      release:
+        description: Create a GitHub Release when a version tag is pushed.
+        type: boolean
+        default: true
+      timeout-minutes:
+        description: Timeout of the build job.
+        type: number
+        default: 30
+    outputs:
+      image:
+        description: Image repository (ghcr.io/<owner>/<name>) when the image job pushed it.
+        value: ${{ jobs.image.outputs.image }}
+
+permissions: {}
+
+env:
+  MAVEN_VERSION: 3.9.16
+  MAVEN_SHA512: 831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6
+  # Quality plugins are skipped when installing iiotedge/common and
+  # platform-build from source: those repositories run them in their own CI.
+  DEPENDENCY_BUILD_FLAGS: >-
+    -Dmaven.test.skip=true -Djacoco.skip=true -Dspotbugs.skip=true
+    -Dspotless.check.skip=true -Dspotless.apply.skip=true -Denforcer.skip=true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      image: ${{ steps.mode.outputs.image }}
+      push: ${{ steps.mode.outputs.push }}
+    steps:
+      - name: Decide what this run publishes
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          DEFAULT_BRANCH_REF: refs/heads/${{ github.event.repository.default_branch }}
+          CONTAINER_IMAGE: ${{ inputs.container-image }}
+          IMAGE_ON_PR: ${{ inputs.image-on-pull-request }}
+        run: |
+          push=false
+          if [[ "$EVENT" != pull_request && ( "$GITHUB_REF" == "$DEFAULT_BRANCH_REF" || "$GITHUB_REF" == refs/tags/* ) ]]; then
+            push=true
+          fi
+          image=false
+          if [[ "$CONTAINER_IMAGE" == true && ( "$push" == true || ( "$EVENT" == pull_request && "$IMAGE_ON_PR" == true ) ) ]]; then
+            image=true
+          fi
+          [[ "$CONTAINER_IMAGE" == true ]] || push=false
+          {
+            echo "image=$image"
+            echo "push=$push"
+          } >> "$GITHUB_OUTPUT"
+          echo "Container image: build=$image push=$push"
+
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+          cache: maven
+          # settings.xml entry for the "github" repository id that iiotedge
+          # poms use for GitHub Packages. It names environment variables only;
+          # the token is passed to the Maven steps below as GITHUB_TOKEN.
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Set up Maven ${{ env.MAVEN_VERSION }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+          curl -fsSL --retry 3 -o "$archive" \
+            "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+          echo "${MAVEN_SHA512}  ${archive}" | sha512sum --check --quiet
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-${MAVEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Start Redis
+        if: inputs.redis
+        env:
+          REDIS_IMAGE: ${{ inputs.redis-image }}
+        run: |
+          set -euo pipefail
+          docker run --detach --name redis --publish 6379:6379 \
+            --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 3s --health-retries 15 \
+            "$REDIS_IMAGE" > /dev/null
+          for _ in $(seq 1 45); do
+            if [[ "$(docker inspect --format '{{.State.Health.Status}}' redis)" == healthy ]]; then
+              echo "Redis is ready on localhost:6379"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs redis
+          echo "::error::Redis did not become healthy"
+          exit 1
+
+      - name: Build iiotedge-bom and iiotedge-parent from source
+        if: inputs.platform-build-ref != ''
+        env:
+          REF: ${{ inputs.platform-build-ref }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/src/platform-build"
+          git init --quiet "$dir"
+          git -C "$dir" fetch --quiet --depth 1 https://github.com/iiotedge/platform-build.git "$REF"
+          git -C "$dir" -c advice.detachedHead=false checkout --quiet FETCH_HEAD
+          echo "iiotedge/platform-build ${REF} at $(git -C "$dir" rev-parse HEAD)"
+          # shellcheck disable=SC2086 # DEPENDENCY_BUILD_FLAGS is a list of flags
+          mvn -B -ntp -f "$dir/iiotedge-bom/pom.xml" install $DEPENDENCY_BUILD_FLAGS
+          # shellcheck disable=SC2086
+          mvn -B -ntp -f "$dir/iiotedge-parent/pom.xml" install $DEPENDENCY_BUILD_FLAGS
+
+      - name: Build iiotedge/common modules from source
+        if: inputs.common-modules != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODULES: ${{ inputs.common-modules }}
+          REF: ${{ inputs.common-ref }}
+        run: |
+          set -euo pipefail
+          order="data base interfaces utils proto audit security message transport"
+          wanted=" ${MODULES//,/ } "
+          for m in $wanted; do
+            if [[ " $order " != *" $m "* ]]; then
+              echo "::error::Unknown iiotedge/common module '$m'. Known modules: $order"
+              exit 1
+            fi
+          done
+          # Inter-module dependencies inside iiotedge/common.
+          [[ "$wanted" == *" interfaces "* ]] && wanted+=" base "
+          [[ "$wanted" == *" base "* ]] && wanted+=" data "
+          dir="$RUNNER_TEMP/src/common"
+          git init --quiet "$dir"
+          git -C "$dir" fetch --quiet --depth 1 https://github.com/iiotedge/common.git "$REF"
+          git -C "$dir" -c advice.detachedHead=false checkout --quiet FETCH_HEAD
+          echo "iiotedge/common ${REF} at $(git -C "$dir" rev-parse HEAD)"
+          for m in $order; do
+            [[ "$wanted " == *" $m "* ]] || continue
+            echo "::group::common/$m"
+            # shellcheck disable=SC2086 # DEPENDENCY_BUILD_FLAGS is a list of flags
+            mvn -B -ntp -f "$dir/$m/pom.xml" install $DEPENDENCY_BUILD_FLAGS
+            echo "::endgroup::"
+          done
+
+      - name: Maven ${{ inputs.maven-goals }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOALS: ${{ inputs.maven-goals }}
+          EXTRA_ARGS: ${{ inputs.maven-args }}
+        run: |
+          # shellcheck disable=SC2086 # goals and arguments are space-separated lists
+          mvn -B -ntp $GOALS $EXTRA_ARGS
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload application jar
+        if: steps.mode.outputs.image == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: application-jar
+          path: target/*.jar
+          if-no-files-found: error
+          retention-days: 1
+
+      # setup-java saves ~/.m2/repository after the job. Internal artifacts
+      # (iiotedge-parent/bom, iiotedge/common builds) stay out of that cache
+      # so that every run resolves or rebuilds them fresh.
+      - name: Keep internal artifacts out of the Maven cache
+        if: always()
+        run: rm -rf "$HOME/.m2/repository/com/iiotedge" "$HOME/.m2/repository/com/iotmining"
+
+  image:
+    name: Container image
+    needs: build
+    if: needs.build.outputs.image == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    outputs:
+      image: ${{ steps.name.outputs.pushed }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download application jar
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: application-jar
+          path: target
+
+      - name: Image name
+        id: name
+        env:
+          OWNER: ${{ github.repository_owner }}
+          NAME: ${{ inputs.image-name || github.event.repository.name }}
+          PUSH: ${{ needs.build.outputs.push }}
+        run: |
+          image="ghcr.io/${OWNER,,}/${NAME,,}"
+          pushed=""
+          [[ "$PUSH" == true ]] && pushed="$image"
+          {
+            echo "image=$image"
+            echo "pushed=$pushed"
+          } >> "$GITHUB_OUTPUT"
+          echo "Image: $image (push=$PUSH)"
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      # Full report (HIGH and CRITICAL) goes to code scanning on public
+      # repositories; the log itself only says whether the gate passed.
+      - name: Trivy report
+        id: report
+        if: inputs.trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.name.outputs.image }}:sha-${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Upload Trivy report to code scanning
+        if: always() && steps.report.outcome == 'success' && !github.event.repository.private
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+      - name: Trivy gate (${{ inputs.trivy-severity }})
+        id: gate
+        if: inputs.trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.name.outputs.image }}:sha-${{ github.sha }}
+          format: json
+          output: trivy-gate.json
+          severity: ${{ inputs.trivy-severity }}
+          ignore-unfixed: ${{ inputs.trivy-ignore-unfixed }}
+          exit-code: '1'
+
+      - name: Report blocking vulnerabilities
+        if: failure() && steps.gate.outcome == 'failure'
+        env:
+          SEVERITY: ${{ inputs.trivy-severity }}
+          PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          count=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-gate.json 2>/dev/null || echo unknown)
+          where="the code scanning alerts of this repository"
+          [[ "$PRIVATE" == true ]] && where="the trivy-gate artifact of this run"
+          echo "::error::The image has ${count} ${SEVERITY} vulnerabilities with a fix available. Details: ${where}."
+
+      - name: Upload Trivy gate result (private repositories)
+        if: failure() && steps.gate.outcome == 'failure' && github.event.repository.private
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-gate
+          path: trivy-gate.json
+          retention-days: 7
+
+      - name: Log in to GHCR
+        if: needs.build.outputs.push == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: needs.build.outputs.push == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      - name: Summary
+        if: always()
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          PUSH: ${{ needs.build.outputs.push }}
+          GATE: ${{ steps.gate.outcome }}
+        run: |
+          {
+            echo "### Container image"
+            echo ""
+            echo "Pushed: ${PUSH}. Trivy gate: ${GATE:-skipped}."
+            echo ""
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: GitHub Release
+    needs: [build, image]
+    # Runs after a successful image push, or right after the build when the
+    # caller builds no image.
+    if: >-
+      !cancelled() && inputs.release && startsWith(github.ref, 'refs/tags/')
+      && needs.build.result == 'success'
+      && (needs.image.result == 'success' || (needs.image.result == 'skipped' && !inputs.container-image))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            exit 0
+          fi
+          notes=""
+          if [[ -n "$IMAGE" ]]; then
+            notes="Image: \`${IMAGE}:${TAG#v}\` (also \`${IMAGE}:sha-${GITHUB_SHA}\`)"
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --notes "$notes"
