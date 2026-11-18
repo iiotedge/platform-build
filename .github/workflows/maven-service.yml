@@ -36,6 +36,9 @@ name: maven-service
 #   - platform-build-ref does the same for iiotedge-bom and iiotedge-parent,
 #     for a parent version that is not published yet.
 #
+# redis and postgres start throwaway servers on localhost for tests that
+# need them (for example a @SpringBootTest against the dev profile).
+#
 # The Trivy gate fails the image job (nothing is pushed) on CRITICAL
 # vulnerabilities that have a fixed version. trivy-blocking: false turns it
 # into a warning; use that only as a short, deliberate exception.
@@ -96,6 +99,20 @@ on:
         description: Redis image used when redis is true.
         type: string
         default: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
+      postgres:
+        description: >-
+          Start PostgreSQL on localhost:5432 for the tests of the build job and point Spring's
+          datasource at it (SPRING_DATASOURCE_URL, _USERNAME and _PASSWORD; random password).
+        type: boolean
+        default: false
+      postgres-db:
+        description: Database created when postgres is true.
+        type: string
+        default: iotmining
+      postgres-image:
+        description: PostgreSQL image used when postgres is true.
+        type: string
+        default: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
       trivy:
         description: Scan the image with Trivy before it is pushed.
         type: boolean
@@ -227,6 +244,35 @@ jobs:
           done
           docker logs redis
           echo "::error::Redis did not become healthy"
+          exit 1
+
+      - name: Start PostgreSQL
+        if: inputs.postgres
+        env:
+          POSTGRES_IMAGE: ${{ inputs.postgres-image }}
+          DB: ${{ inputs.postgres-db }}
+        run: |
+          set -euo pipefail
+          password=$(openssl rand -hex 16)
+          echo "::add-mask::${password}"
+          docker run --detach --name postgres --publish 5432:5432 \
+            --env POSTGRES_DB="$DB" --env POSTGRES_USER=ci --env POSTGRES_PASSWORD="$password" \
+            --health-cmd "pg_isready -U ci -d $DB" --health-interval 2s --health-timeout 3s --health-retries 30 \
+            "$POSTGRES_IMAGE" > /dev/null
+          for _ in $(seq 1 60); do
+            if [[ "$(docker inspect --format '{{.State.Health.Status}}' postgres)" == healthy ]]; then
+              {
+                echo "SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/${DB}"
+                echo "SPRING_DATASOURCE_USERNAME=ci"
+                echo "SPRING_DATASOURCE_PASSWORD=${password}"
+              } >> "$GITHUB_ENV"
+              echo "PostgreSQL is ready on localhost:5432 (database ${DB})"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs postgres
+          echo "::error::PostgreSQL did not become healthy"
           exit 1
 
       - name: Build iiotedge-bom and iiotedge-parent from source

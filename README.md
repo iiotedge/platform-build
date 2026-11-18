@@ -167,12 +167,14 @@ call it from a thin `.github/workflows/ci.yml`:
 ```yaml
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
     tags: ['v*.*.*', '20*.*.*']
 permissions: {}
 jobs:
   pipeline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     uses: iiotedge/platform-build/.github/workflows/maven-service.yml@<commit-sha>
     permissions:
       contents: write          # GitHub Release (tags)
@@ -186,10 +188,17 @@ Callers pin a commit SHA. To roll out a pipeline change, merge it here and then
 move each caller to the new commit. The inputs are documented at the top of the
 workflow file: `common-modules`/`common-ref`, `platform-build-ref` (build an
 unpublished parent from source), `redis` (Redis on localhost:6379 for tests),
+`postgres` (PostgreSQL on localhost:5432, Spring datasource pointed at it),
 `trivy*`, `image-name`, `container-image`, `image-on-pull-request`, `release`.
 
 `ci.yml` in this repository runs on pull requests: it builds the BOM and the
 parent and runs actionlint over every workflow, including `maven-service.yml`.
+
+Actions minutes: draft pull requests are skipped (the `if:` above) until they
+are marked ready for review; superseded runs are cancelled; documentation-only
+changes do not run; Trivy and the image only run on `main` and version tags;
+every job has a timeout; the Maven repository is cached. Validate workflow
+changes locally first (`actionlint`, and the same `mvn` commands with JDK 21).
 
 ## Quality gates `iiotedge-parent` centralizes
 
