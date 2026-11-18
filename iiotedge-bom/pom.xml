@@ -6,7 +6,7 @@
 
     <groupId>com.iiotedge.build</groupId>
     <artifactId>iiotedge-bom</artifactId>
-    <version>2025.08.18</version>
+    <version>2026.11.18</version>
     <packaging>pom</packaging>
     <name>IoTMining BOM</name>
     <description>Central dependency version alignment for all IoTMining services</description>
@@ -42,26 +42,28 @@
     </distributionManagement>
 
     <properties>
-        <!-- Core stack -->
+        <!-- Core stack. Spring Boot 4.0.x is the newest Boot line with a GA Spring Cloud
+             train (2025.1.x); Boot 4.1's train (2026.0) is not GA yet. -->
         <java.version>21</java.version>
-        <spring.boot.version>3.4.4</spring.boot.version>
-        <spring.cloud.version>2024.0.2</spring.cloud.version>
+        <spring.boot.version>4.0.9</spring.boot.version>
+        <spring.cloud.version>2025.1.4</spring.cloud.version>
 
-        <!-- BOMs -->
-        <testcontainers.bom.version>1.20.3</testcontainers.bom.version>
-        <micrometer.tracing.version>1.3.3</micrometer.tracing.version>
-        <jackson.bom.version>2.17.2</jackson.bom.version>
+        <!-- Only libraries that spring-boot-dependencies does NOT manage are pinned
+             below. Everything Boot manages (Jackson 2 and 3, Micrometer/tracing,
+             Testcontainers, Flyway, Postgres, MySQL, Mongo, Lettuce, Kafka, RabbitMQ,
+             Elasticsearch, Caffeine, commons-lang3, JUnit, AssertJ, Mockito,
+             Awaitility) comes from the Boot BOM imported first in dependencyManagement,
+             so there is one source of truth per artifact.
+
+             The 2025.08.x BOM pinned several of those explicitly. Explicit entries beat
+             imported ones, and Boot manages JUnit/Mockito/AssertJ only through its own
+             BOM imports, so those pins silently overrode Boot's test stack for every
+             iiotedge-parent child (junit-jupiter 5.10.3 / mockito-core 5.12.0 under
+             Boot 3.4.4). Under Boot 4 the same pins would mix JUnit 5 with JUnit 6,
+             Kafka 3 with Kafka 4 and Testcontainers 1.x modules with the 2.x core. -->
 
         <!-- Data & infra -->
-        <flyway.version>10.16.0</flyway.version>
-        <postgres.version>42.7.4</postgres.version>
-        <mysql.version>9.1.0</mysql.version>
-        <mongo.driver.version>5.2.1</mongo.driver.version>
-        <redis.lettuce.version>6.3.2.RELEASE</redis.lettuce.version>
-        <kafka.clients.version>3.8.0</kafka.clients.version>
-        <rabbitmq.client.version>5.21.0</rabbitmq.client.version>
         <minio.version>8.5.9</minio.version>
-        <elasticsearch.client.version>8.15.2</elasticsearch.client.version>
 
         <!-- Serialization / schema -->
         <protobuf.version>3.25.3</protobuf.version>
@@ -71,29 +73,29 @@
         <jjwt.version>0.12.6</jjwt.version>
         <bouncycastle.version>1.78.1</bouncycastle.version>
         <passay.version>1.7.4</passay.version>
-        <shedlock.version>5.16.0</shedlock.version>
+        <!-- ShedLock 7.x is the Spring Framework 7 / Boot 4 line (5.x targets Spring 6.1).
+             7.9.0 is the newest release built against Boot 4.0.x (4.0.7, Spring 7.0.8);
+             7.10+ is built against Boot 4.1. -->
+        <shedlock.version>7.9.0</shedlock.version>
 
         <!-- Utils / logging -->
         <mapstruct.version>1.6.2</mapstruct.version>
-        <caffeine.version>3.1.8</caffeine.version>
-        <commons.lang3.version>3.14.0</commons.lang3.version>
         <problem.spring.version>0.29.1</problem.spring.version>
         <logstash.encoder.version>7.4</logstash.encoder.version>
         <logbook.version>3.8.0</logbook.version>
 
-        <!-- Testing -->
-        <junit.jupiter.version>5.10.3</junit.jupiter.version>
-        <assertj.version>3.25.3</assertj.version>
-        <mockito.version>5.12.0</mockito.version>
+        <!-- Testing (not managed by Boot) -->
         <wiremock.version>3.9.2</wiremock.version>
         <restassured.version>5.5.0</restassured.version>
-        <awaitility.version>4.2.1</awaitility.version>
         <archunit.version>1.3.0</archunit.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- Spring BOMs -->
+            <!-- Spring BOMs. Boot first: for any artifact both BOMs manage, the first
+                 import wins. Boot's BOM also imports the Jackson (tools.jackson 3.x and
+                 com.fasterxml.jackson 2.x), Micrometer, Micrometer Tracing and
+                 Testcontainers BOMs, so this BOM no longer imports them separately. -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -110,33 +112,6 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- Observability -->
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-tracing-bom</artifactId>
-                <version>${micrometer.tracing.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-
-            <!-- Testcontainers BOM -->
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>testcontainers-bom</artifactId>
-                <version>${testcontainers.bom.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-
-            <!-- Jackson BOM -->
-            <dependency>
-                <groupId>com.fasterxml.jackson</groupId>
-                <artifactId>jackson-bom</artifactId>
-                <version>${jackson.bom.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-
             <!-- Core libs (versions pinned here; services omit versions) -->
             <dependency>
                 <groupId>org.mapstruct</groupId>
@@ -144,49 +119,9 @@
                 <version>${mapstruct.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-core</artifactId>
-                <version>${flyway.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.postgresql</groupId>
-                <artifactId>postgresql</artifactId>
-                <version>${postgres.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.mysql</groupId>
-                <artifactId>mysql-connector-j</artifactId>
-                <version>${mysql.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.mongodb</groupId>
-                <artifactId>mongodb-driver-sync</artifactId>
-                <version>${mongo.driver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.lettuce</groupId>
-                <artifactId>lettuce-core</artifactId>
-                <version>${redis.lettuce.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.kafka</groupId>
-                <artifactId>kafka-clients</artifactId>
-                <version>${kafka.clients.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.rabbitmq</groupId>
-                <artifactId>amqp-client</artifactId>
-                <version>${rabbitmq.client.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>io.minio</groupId>
                 <artifactId>minio</artifactId>
                 <version>${minio.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>co.elastic.clients</groupId>
-                <artifactId>elasticsearch-java</artifactId>
-                <version>${elasticsearch.client.version}</version>
             </dependency>
 
             <!-- Serialization / schema -->
@@ -212,7 +147,9 @@
                  exists to catch (and did, the first time a real service -
                  auth-service - adopted this BOM: impl/jackson weren't pinned
                  here at all, so their own transitive jjwt-api requirement
-                 got silently overridden to whatever version *was* pinned). -->
+                 got silently overridden to whatever version *was* pinned).
+                 jjwt-jackson uses Jackson 2 (com.fasterxml), which Boot 4 still
+                 manages through its jackson-2-bom import. -->
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-api</artifactId>
@@ -239,7 +176,7 @@
                 <version>${passay.version}</version>
             </dependency>
             <!-- Distributed lock for @Scheduled jobs across multiple service
-                 replicas - already adopted in auth-service, not yet pinned here. -->
+                 replicas (auth-service). -->
             <dependency>
                 <groupId>net.javacrumbs.shedlock</groupId>
                 <artifactId>shedlock-spring</artifactId>
@@ -267,33 +204,12 @@
                 <artifactId>logbook-spring-boot-starter</artifactId>
                 <version>${logbook.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.github.ben-manes.caffeine</groupId>
-                <artifactId>caffeine</artifactId>
-                <version>${caffeine.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.commons</groupId>
-                <artifactId>commons-lang3</artifactId>
-                <version>${commons.lang3.version}</version>
-            </dependency>
 
-            <!-- Testing stack -->
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter</artifactId>
-                <version>${junit.jupiter.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.assertj</groupId>
-                <artifactId>assertj-core</artifactId>
-                <version>${assertj.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.mockito</groupId>
-                <artifactId>mockito-core</artifactId>
-                <version>${mockito.version}</version>
-            </dependency>
+            <!-- Testing stack (JUnit, AssertJ, Mockito, Awaitility, Testcontainers
+                 come from Boot). Testcontainers 2.x renamed its modules:
+                 org.testcontainers:postgresql is now testcontainers-postgresql,
+                 junit-jupiter is testcontainers-junit-jupiter, kafka is
+                 testcontainers-kafka, and so on. -->
             <dependency>
                 <groupId>org.wiremock</groupId>
                 <artifactId>wiremock-standalone</artifactId>
@@ -303,11 +219,6 @@
                 <groupId>io.rest-assured</groupId>
                 <artifactId>rest-assured</artifactId>
                 <version>${restassured.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.awaitility</groupId>
-                <artifactId>awaitility</artifactId>
-                <version>${awaitility.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.tngtech.archunit</groupId>

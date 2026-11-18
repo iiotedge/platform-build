@@ -6,7 +6,7 @@
 
     <groupId>com.iiotedge.build</groupId>
     <artifactId>iiotedge-parent</artifactId>
-    <version>2025.08.18</version>
+    <version>2026.11.18</version>
     <packaging>pom</packaging>
     <name>IoTMining Parent</name>
     <description>Central pluginManagement, quality &amp; security profiles for IoTMining</description>
@@ -45,7 +45,8 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.4</version>
+        <!-- Keep in lockstep with spring.boot.version in iiotedge-bom. -->
+        <version>4.0.9</version>
         <relativePath/>
     </parent>
 
@@ -58,7 +59,7 @@
             <dependency>
                 <groupId>com.iiotedge.build</groupId>
                 <artifactId>iiotedge-bom</artifactId>
-                <version>2025.08.18</version>
+                <version>2026.11.18</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -73,11 +74,14 @@
         <surefire.parallel>classes</surefire.parallel>
         <surefire.threadCount>1</surefire.threadCount>
 
-        <!-- Plugin versions (pin here for reproducibility) -->
-        <maven.compiler.plugin.version>3.12.1</maven.compiler.plugin.version>
-        <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
-        <maven.failsafe.plugin.version>3.2.5</maven.failsafe.plugin.version>
-        <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
+        <!-- Plugin versions (pin here for reproducibility). Compiler, Surefire,
+             Failsafe and Enforcer match what spring-boot-starter-parent 4.0.9 itself
+             manages, so the JUnit 6 platform Boot 4 ships with runs on the Surefire
+             line Boot tests it with. -->
+        <maven.compiler.plugin.version>3.14.1</maven.compiler.plugin.version>
+        <maven.surefire.plugin.version>3.5.6</maven.surefire.plugin.version>
+        <maven.failsafe.plugin.version>3.5.6</maven.failsafe.plugin.version>
+        <maven.enforcer.plugin.version>3.6.3</maven.enforcer.plugin.version>
         <spotless.plugin.version>2.43.0</spotless.plugin.version>
         <jacoco.plugin.version>0.8.11</jacoco.plugin.version>
         <owasp.dependencycheck.version>9.2.0</owasp.dependencycheck.version>
