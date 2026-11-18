@@ -31,18 +31,30 @@ alone for consistent dependency versions across the platform.
   `spring-boot-starter-parent`, so a service using it gets Boot's own sensible
   defaults too, in one hop.
 - **`iiotedge-bom`** - dependency *version* alignment only. Imports the Spring
-  Boot/Cloud/Jackson/Micrometer/Testcontainers BOMs and pins ~25 individual libraries
-  (Postgres, Kafka, Flyway, JJWT, ShedLock, BouncyCastle, the test stack, etc) so
-  every service that imports it gets the same, deliberately-chosen version of each,
-  without needing to declare `<version>` itself.
+  Boot and Spring Cloud BOMs (Boot's BOM in turn brings Jackson 2 and 3, Micrometer,
+  Testcontainers, Postgres, Kafka, Flyway and the JUnit/Mockito/AssertJ test stack)
+  and pins the libraries Boot does not manage (JJWT, ShedLock, BouncyCastle,
+  protobuf, MinIO, WireMock, etc) so every service that imports it gets the same,
+  deliberately-chosen version of each, without needing to declare `<version>` itself.
+  Anything Boot manages is deliberately *not* re-pinned here: an explicit entry in
+  this BOM would override Boot's own choice for every child of `iiotedge-parent`.
 
 ## Modules
-- `iiotedge-bom/` → `com.iiotedge.build:iiotedge-bom:2025.08.18`
-- `iiotedge-parent/` → `com.iiotedge.build:iiotedge-parent:2025.08.18`
+- `iiotedge-bom/` → `com.iiotedge.build:iiotedge-bom:2026.11.18`
+- `iiotedge-parent/` → `com.iiotedge.build:iiotedge-parent:2026.11.18`
+
+| Version | Spring Boot | Spring Cloud | Java |
+|---|---|---|---|
+| `2026.11.18` | 4.0.9 | 2025.1.4 | 21 |
+| `2025.08.18` | 3.4.4 | 2024.0.2 | 21 |
+
+`2026.11.18` is a breaking upgrade for consumers (Spring Boot 4, Spring Framework 7,
+Spring Security 7, Jackson 3 by default, Hibernate 7, Spring Kafka 4, JUnit 6,
+Testcontainers 2). See "Moving a service to 2026.11.18" below.
 
 ## How to Release
 
-1. Push a tag matching the workflow's trigger: `git tag 2025.08.18 && git push --tags`
+1. Push a tag matching the workflow's trigger: `git tag 2026.11.18 && git push --tags`
    (a `v`-prefixed form like `v2025.08.18` also works - the workflow strips the `v`
    before using it as the actual Maven version, so both forms publish identically).
 2. `release-parent.yml` fires: versions and installs the BOM locally first (the
@@ -74,7 +86,7 @@ clean-cache) run surfaced, treat this as unconfirmed until it's actually been ru
 <parent>
   <groupId>com.iiotedge.build</groupId>
   <artifactId>iiotedge-parent</artifactId>
-  <version>2025.08.18</version>
+  <version>2026.11.18</version>
   <relativePath/>
 </parent>
 
@@ -98,7 +110,7 @@ clean-cache) run surfaced, treat this as unconfirmed until it's actually been ru
     <dependency>
       <groupId>com.iiotedge.build</groupId>
       <artifactId>iiotedge-bom</artifactId>
-      <version>2025.08.18</version>
+      <version>2026.11.18</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -127,6 +139,38 @@ that same id - without matching it, the goal runs twice.
   adoption and need to add explicit version overrides to converge.
 
 Neither is a reason not to adopt it - just don't be surprised.
+
+### Moving a service to 2026.11.18 (Spring Boot 4)
+
+Compiling is not enough. Boot 4 split auto-configuration into per-technology
+modules, and a plain library on the classpath no longer brings its
+auto-configuration with it:
+
+- Use the Boot starter, not the bare library: `spring-boot-starter-kafka` (not
+  just `spring-kafka`; without it there is no `KafkaTemplate` and `@KafkaListener`
+  methods never run), `spring-boot-starter-flyway` (not just `flyway-core`;
+  without it migrations silently do not run), and likewise for the other
+  technologies.
+- Renamed starters: `spring-boot-starter-aop` -> `spring-boot-starter-aspectj`
+  (no longer managed, so the old name fails the build),
+  `spring-boot-starter-web` -> `spring-boot-starter-webmvc`,
+  `spring-boot-starter-web-services` -> `spring-boot-starter-webservices`,
+  `spring-boot-starter-oauth2-resource-server` ->
+  `spring-boot-starter-security-oauth2-resource-server` (the old names still
+  resolve but are deprecated).
+- Tests: `@MockBean`/`@SpyBean` are gone (`@MockitoBean`/`@MockitoSpyBean`), and
+  the test slices (`@WebMvcTest`, `@DataJpaTest`, ...) moved to per-technology
+  test modules, pulled in by the matching `spring-boot-starter-*-test` starter.
+- Testcontainers 2 renamed its modules: `org.testcontainers:postgresql` ->
+  `testcontainers-postgresql`, `junit-jupiter` -> `testcontainers-junit-jupiter`,
+  and so on. The old names are no longer managed.
+- JSON: the auto-configured mapper is Jackson 3 (`tools.jackson.databind.json.JsonMapper`).
+  There is no `com.fasterxml.jackson.databind.ObjectMapper` bean unless the service
+  adds `spring-boot-jackson2`. `spring.jackson.use-jackson2-defaults=true`
+  configures Jackson 3 with the defaults Boot used for Jackson 2.
+- Spring Cloud Gateway 5: `spring-cloud-starter-gateway-server-webflux`, and
+  properties move from `spring.cloud.gateway.*` to `spring.cloud.gateway.server.webflux.*`
+  (the old keys are silently ignored).
 
 ### Dev machine setup (for local `mvn install`/`mvn deploy` against this repo)
 
